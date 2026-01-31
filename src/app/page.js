@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import { Network, ShieldCheck, History, ArrowRight } from 'lucide-react';
 
 const Home = () => {
@@ -31,7 +31,7 @@ const Home = () => {
                 <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
                   <div className="rounded-md shadow">
                     <Link
-                      to="/login"
+                      href="/login"
                       className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 md:py-4 md:text-lg transition-colors"
                     >
                       Get Started
@@ -39,7 +39,7 @@ const Home = () => {
                   </div>
                   <div className="mt-3 sm:mt-0 sm:ml-3">
                     <Link
-                      to="/tree"
+                      href="/tree"
                       className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-emerald-700 bg-emerald-100 hover:bg-emerald-200 md:py-4 md:text-lg transition-colors"
                     >
                       View Demo
@@ -82,7 +82,7 @@ const Home = () => {
                   <p className="ml-16 text-lg leading-6 font-medium text-gray-900">Neo4j Graph Database</p>
                 </dt>
                 <dd className="mt-2 ml-16 text-base text-gray-500">
-                  Unlike traditional databases, our graph engine understands relationships naturally, allowing for complex queries like "3rd cousin twice removed" in milliseconds.
+                  Unlike traditional databases, our graph engine understands relationships naturally, allowing for complex queries like &quot;3rd cousin twice removed&quot; in milliseconds.
                 </dd>
               </div>
 
@@ -125,7 +125,7 @@ const Home = () => {
             Join thousands of families preserving their heritage on VanshVault.
           </p>
           <Link
-            to="/login"
+            href="/login"
             className="mt-8 w-full inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-emerald-600 bg-white hover:bg-emerald-50 sm:w-auto transition-colors"
           >
             Sign up for free
