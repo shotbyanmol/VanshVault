@@ -4,9 +4,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AddMemberForm from '@/components/AddMemberForm';
+import FamilyTreeGraph from '@/components/FamilyTreeGraph';
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -15,25 +18,28 @@ export default function AdminPage() {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (!user) {
-          router.push('/');
+          router.push('/login');
           return;
         }
 
         const { data: profile, error } = await supabase
           .from('profiles')
-          .select('role')
+          .select('full_name, role')
           .eq('id', user.id)
           .single();
 
         if (error || profile?.role !== 'admin') {
           console.warn('Access denied: User is not an admin');
-          router.push('/');
+          // Optional: Stay on page but show access denied, or redirect to home/login
+          // For now, let's redirect to login so they can switch accounts
+          router.push('/login');
         } else {
+          setProfile(profile);
           setLoading(false);
         }
       } catch (err) {
         console.error('Auth check error:', err);
-        router.push('/');
+        router.push('/login');
       }
     };
 
@@ -55,11 +61,20 @@ export default function AdminPage() {
           Admin Dashboard
         </h1>
         <p className="mt-4 text-lg text-zinc-600 dark:text-zinc-400">
-          Manage family tree data securely
+             Welcome, {profile?.full_name || 'Admin'}
         </p>
       </div>
 
-      <AddMemberForm />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+           <AddMemberForm onMemberAdded={() => setRefreshKey(prev => prev + 1)} />
+        </div>
+        
+        <div className="bg-white dark:bg-zinc-800 rounded-xl p-6 shadow-lg border border-zinc-200 dark:border-zinc-700">
+          <h2 className="text-xl font-bold mb-4 text-zinc-900 dark:text-white">Live Family Tree</h2>
+          <FamilyTreeGraph refreshTrigger={refreshKey} />
+        </div>
+      </div>
     </div>
   );
 }

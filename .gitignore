@@ -1,1 +1,23 @@
-node_modules
+# dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# next.js build output
+.next/
+/out/
+/build
+
+# env files
+.env*.local
+.env
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# misc
+.DS_Store
+*.pem
+build_output.txt
