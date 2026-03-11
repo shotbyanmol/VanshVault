@@ -26,7 +26,7 @@ export async function GET() {
           group: 'nodes',
           data: {
             id: n.properties.id,
-            label: n.properties.name,
+            label: [n.properties.firstName, n.properties.lastName].filter(Boolean).join(' ') || n.properties.id,
             gender: n.properties.gender,
           },
         });
@@ -38,7 +38,7 @@ export async function GET() {
           group: 'nodes',
           data: {
             id: m.properties.id,
-            label: m.properties.name,
+            label: [m.properties.firstName, m.properties.lastName].filter(Boolean).join(' ') || m.properties.id,
             gender: m.properties.gender,
           },
         });

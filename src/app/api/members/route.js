@@ -1,126 +1,159 @@
 import { NextResponse } from 'next/server';
 import { read, write } from '@/lib/neo4j';
 
-// GET: Fetch all members for the dropdown
-export async function GET() {
+const RESET_CONFIRM_TOKEN = 'YES_RESET_TREE';
+
+// GET: Fetch all members with optional filters
+export async function GET(request) {
   try {
-    const cypher = `
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search') || '';
+    const gen = searchParams.get('gen');
+    const complete = searchParams.get('complete');
+    
+    let query = `
       MATCH (m:Member)
-      RETURN m.id AS id, m.name AS name, m.gender AS gender
-      ORDER BY m.created_at DESC
+      WHERE 1=1
     `;
-    const result = await read(cypher);
-
-    const members = result.map((record) => ({
-      id: record.get('id'),
-      name: record.get('name'),
-      gender: record.get('gender'),
-    }));
-
-    return NextResponse.json({ members });
+    
+    const params = {};
+    
+    if (search) {
+      query += ` AND (toLower(m.firstName) CONTAINS toLower($search) OR toLower(m.lastName) CONTAINS toLower($search))`;
+      params.search = search;
+    }
+    
+    if (gen !== null && gen !== '') {
+      query += ` AND m.generation = toInteger($gen)`;
+      params.gen = gen;
+    }
+    
+    if (complete === 'true') {
+      query += ` AND m.isComplete = true`;
+    } else if (complete === 'false') {
+      query += ` AND m.isComplete = false`;
+    }
+    
+    query += `
+      RETURN m
+      ORDER BY m.generation ASC, m.lastName ASC
+    `;
+    
+    const result = await read(query, params);
+    const members = result.map(record => record.get('m').properties);
+    
+    return NextResponse.json(members);
   } catch (error) {
     console.error('Error fetching members:', error);
-    return NextResponse.json(
-      { error: 'Internal Server Error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
-// POST: Create a new member and link potential relationship
+// POST: Create a new member
 export async function POST(request) {
   try {
-    const { 
-      name, 
-      dob, 
-      gender, 
-      city, 
-      relatedNodeId, 
-      relationType, // 'PARENT_OF' or 'MARRIED_TO'
-      isRoot 
-    } = await request.json();
-
+    const data = await request.json();
+    
     // Basic validation
-    if (!name || !dob || !gender || !city) {
-      return NextResponse.json(
-        { error: 'All fields are required' },
-        { status: 400 }
-      );
+    if (!String(data.firstName || '').trim()) {
+      return NextResponse.json({ error: 'First name is required' }, { status: 400 });
     }
-
-    if (!isRoot && (!relatedNodeId || !relationType)) {
-      return NextResponse.json(
-        { error: 'Related member and relationship type are required for non-root members' },
-        { status: 400 }
-      );
-    }
-
-    // 1. Create the new Member node (isolated first)
-    // We use a transaction or just simple cypher. merging it into one query is safer.
     
-    let cypher;
-    const params = { name, dob, gender, city };
-
-    if (isRoot) {
-      // Create isolated root node
-      cypher = `
-        CREATE (m:Member {
-          id: randomUUID(),
-          name: $name,
-          dob: $dob,
-          gender: $gender,
-          city: $city,
-          created_at: datetime()
-        })
-        RETURN m
-      `;
-    } else {
-      // Create node AND link to existing node
-      // Logic:
-      // MATCH (existing:Member {id: $relatedNodeId})
-      // CREATE (newMember:Member { ... })
-      // CREATE (existing)-[:RELATION_TYPE]->(newMember)
-      
-      params.relatedNodeId = relatedNodeId;
-
-      // Validate Relation Type to prevent injection
-      const validRelations = ['PARENT_OF', 'MARRIED_TO'];
-      if (!validRelations.includes(relationType)) {
-         return NextResponse.json({ error: 'Invalid relationship type' }, { status: 400 });
-      }
-
-      cypher = `
-        MATCH (existing:Member {id: $relatedNodeId})
-        CREATE (m:Member {
-          id: randomUUID(),
-          name: $name,
-          dob: $dob,
-          gender: $gender,
-          city: $city,
-          created_at: datetime()
-        })
-        MERGE (existing)-[:${relationType}]->(m)
-        RETURN m
-      `;
-    }
-
-    const result = await write(cypher, params);
+    const query = `
+      CREATE (m:Member {
+        id: randomUUID(),
+        firstName: $firstName,
+        lastName: $lastName,
+        gender: $gender,
+        born: $born,
+        died: $died,
+        location: $location,
+        city: $city,
+        country: $country,
+        phone: $phone,
+        email: $email,
+        photo: $photo,
+        role: $role,
+        notes: $notes,
+        isComplete: $isComplete,
+        generation: toInteger($generation),
+        branch: $branch,
+        created_at: datetime()
+      })
+      RETURN m
+    `;
     
-    if (result.length === 0) {
-       // This might happen if relatedNodeId wasn't found
-       if (!isRoot) {
-         return NextResponse.json({ error: 'Related member not found' }, { status: 404 });
-       }
-    }
-
+    const params = {
+      firstName: String(data.firstName || '').trim(),
+      lastName: String(data.lastName || '').trim(),
+      gender: data.gender || null,
+      born: data.born || '',
+      died: data.died || null,
+      location: data.location || '',
+      city: data.city || null,
+      country: data.country || null,
+      phone: data.phone || null,
+      email: data.email || null,
+      photo: data.photo || null,
+      role: data.role || null,
+      notes: data.notes || null,
+      isComplete: data.isComplete ?? false,
+      generation: data.generation ?? 0,
+      branch: data.branch || null
+    };
+    
+    const result = await write(query, params);
     const member = result[0].get('m').properties;
-
-    return NextResponse.json({ message: 'Member created', member });
+    
+    // If a parent or spouse was provided, create those relationships too
+    if (data.parentId) {
+      await write(`
+        MATCH (p:Member {id: $parentId}), (m:Member {id: $memberId})
+        MERGE (p)-[:PARENT_OF]->(m)
+      `, { parentId: data.parentId, memberId: member.id });
+    }
+    
+    if (data.spouseId) {
+      await write(`
+        MATCH (s:Member {id: $spouseId}), (m:Member {id: $memberId})
+        MERGE (s)-[:MARRIED_TO]->(m)
+        MERGE (m)-[:MARRIED_TO]->(s)
+      `, { spouseId: data.spouseId, memberId: member.id });
+    }
+    
+    return NextResponse.json(member);
   } catch (error) {
     console.error('Error creating member:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+// DELETE: Reset all members and relationships
+export async function DELETE(request) {
+  const { searchParams } = new URL(request.url);
+  const confirm = searchParams.get('confirm');
+  if (confirm !== RESET_CONFIRM_TOKEN) {
     return NextResponse.json(
-      { error: 'Internal Server Error' },
-      { status: 500 }
+      { error: `Reset blocked. Pass confirm=${RESET_CONFIRM_TOKEN} to continue.` },
+      { status: 400 }
     );
+  }
+
+  try {
+    const query = `
+      MATCH (m:Member)
+      DETACH DELETE m
+      RETURN count(*) AS deleted
+    `;
+    const result = await write(query);
+    const deletedRaw = result[0]?.get('deleted') ?? 0;
+    const deleted = typeof deletedRaw?.toNumber === 'function'
+      ? deletedRaw.toNumber()
+      : Number(deletedRaw || 0);
+
+    return NextResponse.json({ success: true, deleted });
+  } catch (error) {
+    console.error('Error resetting members:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

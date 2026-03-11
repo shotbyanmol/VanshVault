@@ -6,8 +6,9 @@ import { User, Calendar, MapPin, UserPlus, Check, Users, Link as LinkIcon } from
 
 export default function AddMemberForm({ onMemberAdded }) {
   const [formData, setFormData] = useState({
-    name: '',
-    dob: '',
+    firstName: '',
+    lastName: '',
+    born: '',
     gender: 'Male',
     city: '',
   });
@@ -28,10 +29,11 @@ export default function AddMemberForm({ onMemberAdded }) {
         const res = await fetch('/api/members');
         if (res.ok) {
           const data = await res.json();
-          setExistingMembers(data.members || []);
+          const members = Array.isArray(data) ? data : (data.members || []);
+          setExistingMembers(members);
           
           // Auto-check root if no members exist
-          if (data.members?.length === 0) {
+          if (members.length === 0) {
             setIsRoot(true);
           }
         }
@@ -54,11 +56,17 @@ export default function AddMemberForm({ onMemberAdded }) {
 
     try {
       const payload = {
-        ...formData,
-        isRoot,
-        relatedNodeId: isRoot ? null : selectedRelative,
-        relationType: isRoot ? null : relationType,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        born: formData.born || '',
+        city: formData.city || '',
+        location: formData.city || '',
+        gender: formData.gender,
       };
+      if (!isRoot && selectedRelative) {
+        if (relationType === 'PARENT_OF') payload.parentId = selectedRelative;
+        if (relationType === 'MARRIED_TO') payload.spouseId = selectedRelative;
+      }
 
       const res = await fetch('/api/members', {
         method: 'POST',
@@ -71,10 +79,10 @@ export default function AddMemberForm({ onMemberAdded }) {
       if (!res.ok) throw new Error(data.error || 'Failed to create member');
 
       setStatus('success');
-      setMessage(`Member ${formData.name} added successfully!`);
+      setMessage(`Member ${formData.firstName} ${formData.lastName} added successfully!`);
       
       // Reset form
-      setFormData({ name: '', dob: '', gender: 'Male', city: '' });
+      setFormData({ firstName: '', lastName: '', born: '', gender: 'Male', city: '' });
       setSelectedRelative('');
       setRelationType('PARENT_OF');
       
@@ -139,7 +147,7 @@ export default function AddMemberForm({ onMemberAdded }) {
                   <option value="" disabled>Select a relative...</option>
                   {existingMembers.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name} ({m.gender})
+                      {m.firstName} {m.lastName}
                     </option>
                   ))}
                 </select>
@@ -164,7 +172,7 @@ export default function AddMemberForm({ onMemberAdded }) {
                 </select>
               </div>
               <p className="text-xs text-zinc-500 mt-1 italic">
-                {selectedRelative && existingMembers.find(m => m.id === selectedRelative)?.name}
+                {selectedRelative && `${existingMembers.find(m => m.id === selectedRelative)?.firstName || ''} ${existingMembers.find(m => m.id === selectedRelative)?.lastName || ''}`.trim()}
                 {' -> '}
                 {relationType === 'PARENT_OF' ? 'PARENT OF' : 'MARRIED TO'}
                 {' -> '}
@@ -176,38 +184,57 @@ export default function AddMemberForm({ onMemberAdded }) {
 
         <div className="border-t border-zinc-200 dark:border-zinc-700 my-4"></div>
 
-        {/* Name */}
+        {/* First Name */}
         <div>
           <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-            Full Name
+            First Name
           </label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
               type="text"
-              name="name"
+              name="firstName"
               required
-              value={formData.name}
+              value={formData.firstName}
               onChange={handleChange}
-              placeholder="e.g. Vansh Gupta"
+              placeholder="e.g. Vansh"
               className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
             />
           </div>
         </div>
 
-        {/* Date of Birth */}
+        {/* Last Name */}
         <div>
           <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-            Date of Birth
+            Last Name
+          </label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <input
+              type="text"
+              name="lastName"
+              required
+              value={formData.lastName}
+              onChange={handleChange}
+              placeholder="e.g. Gupta"
+              className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Birth Year / Date */}
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+            Birth Year / Date
           </label>
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
-              type="date"
-              name="dob"
-              required
-              value={formData.dob}
+              type="text"
+              name="born"
+              value={formData.born}
               onChange={handleChange}
+              placeholder="e.g. 1990"
               className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
             />
           </div>

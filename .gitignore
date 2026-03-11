@@ -9,8 +9,10 @@ node_modules/
 /build
 
 # env files
-.env*.local
 .env
+.env.*
+!.env.example
+.env*.local
 
 # debug logs
 npm-debug.log*

@@ -1,16 +1,93 @@
-'use client';
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import { motion } from 'framer-motion';
-import { Lock, Mail, LogIn, AlertCircle } from 'lucide-react';
-import Link from 'next/link';
+const DS = {
+  colors: {
+    bg: "#0A0D0F",
+    surface: "#111518",
+    surfaceElevated: "#161C20",
+    surfaceBorder: "#1E2830",
+    accent: "#4E9B6F",
+    accentSoft: "#3A7356",
+    accentGlow: "rgba(78,155,111,0.15)",
+    accentDim: "rgba(78,155,111,0.08)",
+    brand: "#4E9B6F",
+    gold: "#C9A84C",
+    goldSoft: "rgba(201,168,76,0.15)",
+    text: "#E8EDF0",
+    textMuted: "#6B8090",
+    textDim: "#3E5060",
+    danger: "#E05A5A",
+    warn: "#D4914A",
+    info: "#4A8FD4",
+    border: "#1E2830"
+  },
+  fonts: {
+    title: { fontFamily: "'Playfair Display', Georgia, serif", fontWeight: 600 },
+    body: { fontFamily: "'DM Sans', system-ui, sans-serif" },
+    label: { fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: "12px", fontWeight: 500 }
+  },
+  radius: { sm: "6px", md: "10px", lg: "16px", xl: "24px", full: "9999px" },
+  shadow: {
+    sm: "0 2px 8px rgba(0,0,0,0.4)",
+    md: "0 4px 24px rgba(0,0,0,0.5)",
+    xl: "0 8px 48px rgba(0,0,0,0.6)"
+  }
+};
+
+const GlobalStyles = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: ${DS.colors.bg}; color: ${DS.colors.text}; font-family: ${DS.fonts.body.fontFamily}; }
+    @keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  `}</style>
+);
+
+const Btn = ({ children, variant = "default", onClick, style = {}, disabled, loading }) => {
+  const [hov, setHov] = useState(false);
+  const isPrimary = variant === "primary";
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || loading}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px",
+        fontWeight: 500, transition: "all 0.2s", cursor: (disabled || loading) ? "not-allowed" : "pointer",
+        opacity: (disabled || loading) ? 0.6 : 1,
+        background: isPrimary ? (hov ? DS.colors.accentSoft : DS.colors.accent) : (hov ? DS.colors.surfaceElevated : DS.colors.surface),
+        border: isPrimary ? "none" : `1px solid ${hov ? DS.colors.accent : DS.colors.surfaceBorder}`,
+        color: isPrimary ? "#fff" : DS.colors.text,
+        padding: "8px 18px", borderRadius: DS.radius.md, fontSize: "14px",
+        fontFamily: DS.fonts.body.fontFamily,
+        ...style
+      }}
+    >
+      {loading ? "Please wait..." : children}
+    </button>
+  );
+};
+
+const Icon = ({ name, size = 16, color }) => {
+  const icons = {
+    Lock: "M12 2C9.24 2 7 4.24 7 7v3H6c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-8c0-1.1-.9-2-2-2h-1V7c0-2.76-2.24-5-5-5zm0 2c1.66 0 3 1.34 3 3v3H9V7c0-1.66 1.34-3 3-3zm0 13c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z",
+    AlertCircle: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color || "currentColor"}>
+      {icons[name] && <path d={icons[name]} />}
+    </svg>
+  );
+};
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -27,8 +104,8 @@ export default function LoginPage() {
 
       if (error) throw error;
 
-      router.push('/admin');
-      router.refresh(); // Refresh to update server components or auth state layout
+      router.push("/");
+      router.refresh();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -36,112 +113,125 @@ export default function LoginPage() {
     }
   };
 
-  const handleSignUp = async () => {
-     setLoading(true);
-     setError(null);
-     try {
-        const { error } = await supabase.auth.signUp({
-           email,
-           password
-        });
-        if (error) throw error;
-        setError('Sign up successful! Please check your email to confirm.');
-     } catch(err) {
-        setError(err.message);
-     } finally {
-        setLoading(false);
-     }
-  }
-
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="max-w-md w-full bg-white dark:bg-zinc-800 rounded-xl shadow-xl overflow-hidden border border-zinc-200 dark:border-zinc-700"
-      >
-        <div className="bg-indigo-600 p-6 text-center">
-          <div className="mx-auto w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-4">
-             <Lock className="w-6 h-6 text-white" />
+    <>
+      <GlobalStyles />
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: DS.colors.bg,
+        backgroundImage: `radial-gradient(circle at 50% 50%, ${DS.colors.brand}15 0%, transparent 70%)`
+      }}>
+        <div style={{
+          width: "100%",
+          maxWidth: "400px",
+          padding: "40px",
+          background: DS.colors.surface,
+          borderRadius: DS.radius.xl,
+          border: `1px solid ${DS.colors.border}`,
+          boxShadow: DS.shadow.xl,
+          animation: "slide-up 0.5s ease-out"
+        }}>
+          <div style={{ textAlign: "center", marginBottom: "32px" }}>
+            <div style={{
+              width: "60px",
+              height: "60px",
+              background: `${DS.colors.brand}20`,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px",
+              border: `1px solid ${DS.colors.brand}40`
+            }}>
+              <Icon name="Lock" size={24} color={DS.colors.brand} />
+            </div>
+            <h1 style={{ ...DS.fonts.title, fontSize: "24px", color: DS.colors.text }}>Arboris Admin</h1>
+            <p style={{ ...DS.fonts.body, color: DS.colors.textMuted, marginTop: "8px" }}>Sign in to manage your lineage</p>
           </div>
-          <h2 className="text-2xl font-bold text-white">Admin Access</h2>
-          <p className="text-indigo-100 mt-1">Sign in to manage the family tree</p>
-        </div>
 
-        <div className="p-8">
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                  placeholder="admin@example.com"
-                />
-              </div>
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <label style={{ ...DS.fonts.label, color: DS.colors.textMuted }}>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="admin@arboris.com"
+                style={{
+                  padding: "12px 16px",
+                  background: DS.colors.bg,
+                  border: `1px solid ${DS.colors.border}`,
+                  borderRadius: DS.radius.md,
+                  color: DS.colors.text,
+                  outline: "none",
+                  ...DS.fonts.body
+                }}
+              />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                  placeholder="••••••••"
-                />
-              </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <label style={{ ...DS.fonts.label, color: DS.colors.textMuted }}>Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+                style={{
+                  padding: "12px 16px",
+                  background: DS.colors.bg,
+                  border: `1px solid ${DS.colors.border}`,
+                  borderRadius: DS.radius.md,
+                  color: DS.colors.text,
+                  outline: "none",
+                  ...DS.fonts.body
+                }}
+              />
             </div>
 
             {error && (
-              <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>{error}</span>
+              <div style={{
+                padding: "12px",
+                background: "#ff4d4d20",
+                border: "1px solid #ff4d4d40",
+                borderRadius: DS.radius.md,
+                color: "#ff8080",
+                fontSize: "14px",
+                display: "flex",
+                gap: "8px",
+                alignItems: "center"
+              }}>
+                <Icon name="AlertCircle" size={16} />
+                {error}
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-md shadow-indigo-500/20 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>
-                  <LogIn className="w-4 h-4" />
-                  Sign In
-                </>
-              )}
-            </button>
-            
-            <button
-               type="button"
-               onClick={handleSignUp}
-               className="w-full text-center text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-               Don't have an account? Sign Up
-            </button>
+            <Btn variant="primary" loading={loading} style={{ width: "100%", height: "48px", marginTop: "12px" }}>
+              Enter Archives
+            </Btn>
           </form>
           
-          <div className="mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-700 text-center">
-             <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors">
-                ← Back to Home
-             </Link>
+          <div style={{ marginTop: "24px", textAlign: "center" }}>
+            <button 
+              onClick={() => router.push("/")}
+              style={{
+                background: "none",
+                border: "none",
+                color: DS.colors.textMuted,
+                cursor: "pointer",
+                ...DS.fonts.label,
+                textDecoration: "underline"
+              }}
+            >
+              Back to Tree
+            </button>
           </div>
         </div>
-      </motion.div>
-    </div>
+      </div>
+    </>
   );
 }
