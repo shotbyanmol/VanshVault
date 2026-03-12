@@ -145,12 +145,6 @@ const convertToUiTree = (rawNode, rawById, parentId = null) => {
   return uiNode;
 };
 
-const shiftGenerations = (node, delta) => ({
-  ...node,
-  generation: Math.max(0, Number(node.generation || 0) + delta),
-  children: (node.children || []).map((child) => shiftGenerations(child, delta)),
-});
-
 const isSyntheticMember = (member) =>
   Boolean(member?.isSynthetic) || member?.id === "__vault_root__";
 
@@ -237,33 +231,22 @@ const normalizeFamilyTree = (treePayload) => {
   let rootNode = uiRoots[0];
 
   if (uiRoots.length > 1) {
-    uiRoots = uiRoots.map((node) => shiftGenerations(node, 1));
-    rootNode = {
-      id: "__vault_root__",
-      isSynthetic: true,
-      firstName: "Vault",
-      lastName: "Root",
-      name: "Vault Root",
-      born: "",
-      died: "",
-      gender: "M",
-      location: "",
-      city: "",
-      country: "",
-      phone: "",
-      email: "",
-      photo: "",
-      role: "Root",
-      notes: "",
-      generation: 0,
-      isActive: true,
-      isComplete: true,
-      branch: "",
-      parentId: null,
-      spouseId: null,
-      spouse: null,
-      children: uiRoots,
-    };
+    const canonicalRoot = uiRoots.reduce((best, current) => pickCanonicalSpouseRoot(best, current));
+    const mergedChildIds = new Set((canonicalRoot.children || []).map((child) => child.id));
+    const detachedRoots = uiRoots.filter((candidate) => candidate.id !== canonicalRoot.id);
+
+    detachedRoots.forEach((candidate) => {
+      if (!mergedChildIds.has(candidate.id)) {
+        canonicalRoot.children.push({
+          ...candidate,
+          parentId: canonicalRoot.id,
+          generation: Math.max(Number(candidate.generation || 0), Number(canonicalRoot.generation || 0) + 1),
+        });
+        mergedChildIds.add(candidate.id);
+      }
+    });
+
+    rootNode = canonicalRoot;
   }
 
   const all = flattenFamily(rootNode);
@@ -1434,7 +1417,7 @@ const LineageModal = ({ node, byIdMap, onClose }) => {
 // ══════════════════════════════════════════════════════════════════
 //  EDIT MODAL — full form for updating member details
 // ══════════════════════════════════════════════════════════════════
-const EditModal = ({ node, onClose, onSave, mode = "edit" }) => {
+const EditModal = ({ node, onClose, onSave, mode = "edit", parentOptions = [], requireParent = false }) => {
   const isCreate = mode === "create";
   const [form, setForm] = useState({
     name:     node.name     || "",
@@ -1444,6 +1427,7 @@ const EditModal = ({ node, onClose, onSave, mode = "edit" }) => {
     role:     node.role     || "Member",
     gender:   node.gender   || "M",
     isActive: node.isActive ?? true,
+    parentId: node.parentId || "",
     spouseName: node.spouse?.name || "",
     spouseBorn: node.spouse?.born || "",
     notes:    node.notes    || "",
@@ -1460,11 +1444,15 @@ const EditModal = ({ node, onClose, onSave, mode = "edit" }) => {
     try {
       const payload = { ...form };
       if (isCreate) {
+        if (requireParent && !form.parentId) {
+          throw new Error("Select which existing member this new member belongs under.");
+        }
+        const selectedParent = parentOptions.find((option) => option.id === form.parentId) || null;
         Object.assign(payload, {
-          parentId: node.parentId || null,
-          parentName: node.parentName || "",
-          generation: node.generation ?? 0,
-          branch: node.branch || "",
+          parentId: form.parentId || null,
+          parentName: selectedParent?.name || "",
+          generation: selectedParent ? Number(selectedParent.generation || 0) + 1 : 0,
+          branch: selectedParent?.branch || "",
           isComplete: node.isComplete ?? true,
         });
       } else {
@@ -1543,6 +1531,26 @@ const EditModal = ({ node, onClose, onSave, mode = "edit" }) => {
         {/* Form */}
         <div style={{ overflowY:"auto", padding:"20px 24px", flex:1 }}>
 
+          {isCreate && (
+            <ESection label="Node Relation">
+              <div style={{ padding:"10px 14px", background:`${C.cyan}0F`,
+                border:`1px solid ${C.cyan}35`, borderRadius:8, marginBottom:12,
+                fontSize:11, color:C.inkMid, lineHeight:1.45 }}>
+                Only one relation is allowed while adding a new member: select exactly one parent member.
+              </div>
+              <EField label="Add Under">
+                <select value={form.parentId} onChange={e=>u("parentId", e.target.value)} required={requireParent}>
+                  {!requireParent && <option value="">Create as root member</option>}
+                  {parentOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {`Gen ${option.generation} - ${option.name}`}
+                    </option>
+                  ))}
+                </select>
+              </EField>
+            </ESection>
+          )}
+
           <ESection label="Personal Details">
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               <EField label="Full Name">
@@ -1589,6 +1597,7 @@ const EditModal = ({ node, onClose, onSave, mode = "edit" }) => {
           </ESection>
 
           {/* Spouse section */}
+          {!isCreate && (
           <ESection label={node.spouse ? "Companion Star (Spouse)" : "Add Spouse"}>
             <div style={{ padding:"10px 14px", background:`${C.union}0A`,
               border:`1px solid ${C.union}25`, borderRadius:8, marginBottom:12,
@@ -1609,6 +1618,7 @@ const EditModal = ({ node, onClose, onSave, mode = "edit" }) => {
               </EField>
             </div>
           </ESection>
+          )}
 
           <ESection label="Notes">
             <textarea value={form.notes} onChange={e=>u("notes",e.target.value)}
@@ -2093,6 +2103,31 @@ export default function App() {
     setBranchNode((prev) => (prev ? byIdMap[prev.id] || null : prev));
   }, [byIdMap]);
 
+  const memberOptions = useMemo(() => (
+    Object.values(byIdMap || {})
+      .filter((member) => member?.id && !isSyntheticMember(member))
+      .sort((a, b) => {
+        const genDiff = Number(a.generation || 0) - Number(b.generation || 0);
+        if (genDiff !== 0) return genDiff;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      })
+      .map((member) => ({
+        id: member.id,
+        name: member.name,
+        generation: Number(member.generation || 0),
+        branch: member.branch || "",
+      }))
+  ), [byIdMap]);
+
+  const selectedCreateParent = useMemo(() => {
+    if (planetNode && !isSyntheticMember(planetNode)) {
+      return memberOptions.find((member) => member.id === planetNode.id) || null;
+    }
+    return null;
+  }, [memberOptions, planetNode]);
+
+  const requireParentOnCreate = memberOptions.length > 0;
+
   const showNotice = useCallback((message) => {
     setUiNotice(message);
     if (noticeTimerRef.current) {
@@ -2134,8 +2169,9 @@ export default function App() {
   }, [planetNode]);
 
   const handleCreate = useCallback(() => {
-    const selectedParent = planetNode && !isSyntheticMember(planetNode) ? planetNode : null;
-    const nextGeneration = selectedParent ? Number(selectedParent.generation || 0) + 1 : 0;
+    const fallbackParent = memberOptions[0] || null;
+    const parentForCreate = selectedCreateParent || fallbackParent || null;
+    const nextGeneration = parentForCreate ? Number(parentForCreate.generation || 0) + 1 : 0;
 
     setCreateNode({
       id: "",
@@ -2151,11 +2187,11 @@ export default function App() {
       notes: "",
       generation: nextGeneration,
       isComplete: true,
-      parentId: selectedParent?.id || null,
-      parentName: selectedParent?.name || "",
-      branch: selectedParent?.branch || "",
+      parentId: parentForCreate?.id || "",
+      parentName: parentForCreate?.name || "",
+      branch: parentForCreate?.branch || "",
     });
-  }, [planetNode]);
+  }, [memberOptions, selectedCreateParent]);
 
   const initializeFirstRoot = useCallback(async () => {
     if (initializingRoot) return;
@@ -2213,6 +2249,19 @@ export default function App() {
     if (!fullName) throw new Error("Full name is required.");
 
     const parsedName = splitDisplayName(fullName, "", "");
+    const selectedParentId = String(formData.parentId || "").trim();
+    const selectedParent = selectedParentId
+      ? byIdMap?.[selectedParentId] || memberOptions.find((member) => member.id === selectedParentId) || null
+      : null;
+
+    if (requireParentOnCreate && !selectedParentId) {
+      throw new Error("Select which existing member this new member should be added under.");
+    }
+
+    if (selectedParentId && !selectedParent) {
+      throw new Error("Selected parent member could not be resolved.");
+    }
+
     const payload = {
       firstName: parsedName.firstName,
       lastName: parsedName.lastName,
@@ -2222,11 +2271,11 @@ export default function App() {
       city: String(formData.location || ""),
       role: String(formData.role || "Member"),
       notes: String(formData.notes || ""),
-      generation: Number(formData.generation ?? 0),
-      branch: String(formData.branch || ""),
+      generation: selectedParent ? Number(selectedParent.generation || 0) + 1 : 0,
+      branch: selectedParent?.branch || "",
       isComplete: true,
       gender: String(formData.gender || "M"),
-      parentId: formData.parentId || null,
+      parentId: selectedParentId || null,
     };
 
     const createRes = await fetch("/api/members", {
@@ -2237,38 +2286,14 @@ export default function App() {
     const createData = await parseJsonSafe(createRes);
     if (!createRes.ok) throw new Error(createData?.error || "Failed to create member.");
 
-    const spouseName = String(formData.spouseName || "").trim();
-    if (spouseName) {
-      const spouseParsed = splitDisplayName(spouseName, "", "");
-      const spouseRes = await fetch("/api/members", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName: spouseParsed.firstName,
-          lastName: spouseParsed.lastName,
-          born: String(formData.spouseBorn || ""),
-          gender: payload.gender === "M" ? "F" : "M",
-          generation: payload.generation,
-          role: "Spouse",
-          location: payload.location,
-          city: payload.city,
-          spouseId: createData.id,
-          isComplete: true,
-          branch: payload.branch,
-        }),
-      });
-      const spouseData = await parseJsonSafe(spouseRes);
-      if (!spouseRes.ok) throw new Error(spouseData?.error || "Failed to create spouse.");
-    }
-
     await loadFamily();
     const createdName = [parsedName.firstName, parsedName.lastName].filter(Boolean).join(" ").trim();
-    if (formData.parentName) {
-      showNotice(`Added ${createdName} under ${formData.parentName}.`);
+    if (selectedParent?.name) {
+      showNotice(`Added ${createdName} under ${selectedParent.name}.`);
     } else {
       showNotice(`Added ${createdName} as a new root member.`);
     }
-  }, [loadFamily, showNotice]);
+  }, [byIdMap, loadFamily, memberOptions, requireParentOnCreate, showNotice]);
 
   const persistEdit = useCallback(async (formData) => {
     const parseJsonSafe = async (response) => {
@@ -2355,7 +2380,6 @@ export default function App() {
     await loadFamily();
   }, [byIdMap, editNode, planetNode, loadFamily]);
 
-  const selectedCreateParent = planetNode && !isSyntheticMember(planetNode) ? planetNode : null;
   const showEmptyState = !loadingTree && !loadError && !rootNode;
 
   return (
@@ -2527,8 +2551,10 @@ export default function App() {
               </div>
               <div style={{ fontSize:11, color:C.inkMid, lineHeight:1.45 }}>
                 {selectedCreateParent
-                  ? `Will be connected as child of ${selectedCreateParent.name}.`
-                  : "No star selected. This creates a new root member."}
+                  ? `Preselected parent: ${selectedCreateParent.name}. You can change it in the add form.`
+                  : (requireParentOnCreate
+                    ? "Choose the target parent from the add form list."
+                    : "No members yet. First add will be a root member.")}
               </div>
               <button
                 type="button"
@@ -2595,6 +2621,8 @@ export default function App() {
         <EditModal
           node={createNode}
           mode="create"
+          parentOptions={memberOptions}
+          requireParent={requireParentOnCreate}
           onClose={()=>setCreateNode(null)}
           onSave={persistCreate}
         />

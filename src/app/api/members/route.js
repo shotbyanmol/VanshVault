@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { read, write } from '@/lib/neo4j';
 
 const RESET_CONFIRM_TOKEN = 'YES_RESET_TREE';
+const toNumber = (value) => (typeof value?.toNumber === 'function' ? value.toNumber() : Number(value || 0));
 
 // GET: Fetch all members with optional filters
 export async function GET(request) {
@@ -53,10 +54,49 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const data = await request.json();
+    const parentId = String(data.parentId || '').trim();
+    const spouseId = String(data.spouseId || '').trim();
     
     // Basic validation
     if (!String(data.firstName || '').trim()) {
       return NextResponse.json({ error: 'First name is required' }, { status: 400 });
+    }
+
+    if (parentId && spouseId) {
+      return NextResponse.json(
+        { error: 'Only one relation is allowed at creation time. Provide either parentId or spouseId.' },
+        { status: 400 }
+      );
+    }
+
+    const existingCountResult = await read(`MATCH (m:Member) RETURN count(m) AS total`);
+    const existingCount = toNumber(existingCountResult[0]?.get('total'));
+
+    if (existingCount > 0 && !parentId && !spouseId) {
+      return NextResponse.json(
+        { error: 'parentId is required when adding a new member to an existing tree.' },
+        { status: 400 }
+      );
+    }
+
+    if (parentId) {
+      const parentExistsResult = await read(
+        `MATCH (p:Member {id: $parentId}) RETURN count(p) AS total`,
+        { parentId }
+      );
+      if (toNumber(parentExistsResult[0]?.get('total')) === 0) {
+        return NextResponse.json({ error: 'Selected parent member was not found' }, { status: 404 });
+      }
+    }
+
+    if (spouseId) {
+      const spouseExistsResult = await read(
+        `MATCH (s:Member {id: $spouseId}) RETURN count(s) AS total`,
+        { spouseId }
+      );
+      if (toNumber(spouseExistsResult[0]?.get('total')) === 0) {
+        return NextResponse.json({ error: 'Selected spouse member was not found' }, { status: 404 });
+      }
     }
     
     const query = `
@@ -106,19 +146,19 @@ export async function POST(request) {
     const member = result[0].get('m').properties;
     
     // If a parent or spouse was provided, create those relationships too
-    if (data.parentId) {
+    if (parentId) {
       await write(`
         MATCH (p:Member {id: $parentId}), (m:Member {id: $memberId})
         MERGE (p)-[:PARENT_OF]->(m)
-      `, { parentId: data.parentId, memberId: member.id });
+      `, { parentId, memberId: member.id });
     }
     
-    if (data.spouseId) {
+    if (spouseId) {
       await write(`
         MATCH (s:Member {id: $spouseId}), (m:Member {id: $memberId})
         MERGE (s)-[:MARRIED_TO]->(m)
         MERGE (m)-[:MARRIED_TO]->(s)
-      `, { spouseId: data.spouseId, memberId: member.id });
+      `, { spouseId, memberId: member.id });
     }
     
     return NextResponse.json(member);
