@@ -105,6 +105,9 @@ export async function GET() {
     return NextResponse.json(roots.length === 1 ? roots[0] : roots);
   } catch (error) {
     console.error('Error fetching tree:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    const safeMessage = process.env.NODE_ENV === 'development'
+      ? (error?.message || 'Internal Server Error')
+      : 'Internal Server Error';
+    return NextResponse.json({ error: safeMessage }, { status: 500 });
   }
 }

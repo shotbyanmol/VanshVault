@@ -415,6 +415,173 @@ const Starfield = () => {
   );
 };
 
+// Spirit-inspired background field: flowing particles with cursor interaction
+const SpiritParticleField = () => {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const particlesRef = useRef([]);
+  const pointerRef = useRef({ x: 0, y: 0, active: false });
+  const metricsRef = useRef({ w: 0, h: 0, dpr: 1 });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const createParticles = (width, height) => {
+      const area = width * height;
+      const count = Math.max(120, Math.min(280, Math.floor(area / 9000)));
+      particlesRef.current = Array.from({ length: count }, (_, i) => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        px: Math.random() * width,
+        py: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.45,
+        vy: (Math.random() - 0.5) * 0.45,
+        size: 0.65 + Math.random() * 1.8,
+        hue: i % 2 === 0 ? "91,156,246" : "34,211,238",
+        phase: Math.random() * Math.PI * 2,
+      }));
+    };
+
+    const resize = () => {
+      const parent = canvas.parentElement;
+      const rect = parent?.getBoundingClientRect();
+      const w = Math.max(1, Math.floor(rect?.width || window.innerWidth));
+      const h = Math.max(1, Math.floor(rect?.height || window.innerHeight));
+      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      metricsRef.current = { w, h, dpr };
+      createParticles(w, h);
+    };
+
+    const onPointerMove = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      pointerRef.current = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        active: true,
+      };
+    };
+
+    const onPointerLeave = () => {
+      pointerRef.current.active = false;
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerleave", onPointerLeave);
+
+    let t = 0;
+    const render = () => {
+      t += 0.008;
+      const { w, h } = metricsRef.current;
+      const pointer = pointerRef.current;
+
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "rgba(2,1,10,0.16)";
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.globalCompositeOperation = "lighter";
+
+      for (const p of particlesRef.current) {
+        p.px = p.x;
+        p.py = p.y;
+
+        // Smooth flow-field movement
+        const angle =
+          Math.sin((p.y * 0.0045) + t + p.phase) * 2.3 +
+          Math.cos((p.x * 0.004) - t * 0.8 + p.phase) * 1.9;
+        p.vx += Math.cos(angle) * 0.028;
+        p.vy += Math.sin(angle) * 0.028;
+
+        // Cursor influence (push + swirl)
+        if (pointer.active) {
+          const dx = p.x - pointer.x;
+          const dy = p.y - pointer.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          if (dist < 170) {
+            const pull = (170 - dist) / 170;
+            p.vx += (dx / dist) * pull * 0.22;
+            p.vy += (dy / dist) * pull * 0.22;
+            p.vx += (-dy / dist) * pull * 0.08;
+            p.vy += (dx / dist) * pull * 0.08;
+          }
+        }
+
+        p.vx *= 0.94;
+        p.vy *= 0.94;
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Wrap-around edges
+        if (p.x < -4) {
+          p.x = w + 4;
+          p.px = p.x;
+        } else if (p.x > w + 4) {
+          p.x = -4;
+          p.px = p.x;
+        }
+        if (p.y < -4) {
+          p.y = h + 4;
+          p.py = p.y;
+        } else if (p.y > h + 4) {
+          p.y = -4;
+          p.py = p.y;
+        }
+
+        const speed = Math.min(1.2, Math.sqrt(p.vx * p.vx + p.vy * p.vy) * 2.4);
+        const alpha = 0.11 + speed * 0.26;
+
+        // Trail
+        ctx.strokeStyle = `rgba(${p.hue},${alpha})`;
+        ctx.lineWidth = Math.max(0.4, p.size * 0.55);
+        ctx.beginPath();
+        ctx.moveTo(p.px, p.py);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+
+        // Core glow
+        ctx.fillStyle = `rgba(${p.hue},${0.24 + speed * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      rafRef.current = requestAnimationFrame(render);
+    };
+
+    rafRef.current = requestAnimationFrame(render);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerleave", onPointerLeave);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 1,
+        pointerEvents: "none",
+        opacity: 0.85,
+      }}
+    />
+  );
+};
+
 // ══════════════════════════════════════════════════════════════════
 //  INTERACTIVE PARTICLE PLANET — canvas-driven spirit orb
 //  When a node is selected the view fills with a luminous planet
@@ -1861,6 +2028,7 @@ const TreeCanvas = ({ rootNode, filters, onNodeSelect }) => {
     <div style={{ position:"relative", flex:1, overflow:"hidden",
       background:`radial-gradient(ellipse 100% 100% at 50% 50%, #080530 0%, #03020F 55%, ${C.void} 100%)` }}>
       <Starfield/>
+      <SpiritParticleField/>
 
       {/* Bottom controls */}
       <div style={{ position:"absolute", bottom:14, right:14, zIndex:20,
@@ -1884,7 +2052,7 @@ const TreeCanvas = ({ rootNode, filters, onNodeSelect }) => {
 
       <svg ref={svgRef} width="100%" height="100%"
         viewBox={`0 0 ${W} ${H}`}
-        style={{ cursor:drag?"grabbing":"grab" }}
+        style={{ cursor:drag?"grabbing":"grab", position:"relative", zIndex:2 }}
         onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU} onMouseLeave={onMU}>
 
         <defs>
