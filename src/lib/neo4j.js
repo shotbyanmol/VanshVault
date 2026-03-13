@@ -1,8 +1,11 @@
 import neo4j from 'neo4j-driver';
 
-const URI = process.env.NEO4J_URI || process.env.VITE_NEO4J_URI;
-const USER = process.env.NEO4J_USER || process.env.VITE_NEO4J_USER;
-const PASSWORD = process.env.NEO4J_PASSWORD || process.env.VITE_NEO4J_PASSWORD;
+const isProduction = process.env.NODE_ENV === 'production';
+const allowViteFallback = !isProduction;
+
+const URI = process.env.NEO4J_URI || (allowViteFallback ? process.env.VITE_NEO4J_URI : '');
+const USER = process.env.NEO4J_USER || (allowViteFallback ? process.env.VITE_NEO4J_USER : '');
+const PASSWORD = process.env.NEO4J_PASSWORD || (allowViteFallback ? process.env.VITE_NEO4J_PASSWORD : '');
 
 let driver = null;
 let initError = null;
@@ -14,8 +17,14 @@ if (!PASSWORD) missingConfig.push('NEO4J_PASSWORD');
 try {
   if (missingConfig.length === 0) {
     driver = neo4j.driver(URI, neo4j.auth.basic(USER, PASSWORD));
+    if (allowViteFallback && !process.env.NEO4J_URI && process.env.VITE_NEO4J_URI) {
+      console.warn('Using VITE_NEO4J_* fallback in non-production runtime. Set NEO4J_* for server routes.');
+    }
   } else {
-    initError = new Error(`Neo4j is not configured. Missing: ${missingConfig.join(', ')}`);
+    initError = new Error(
+      `Neo4j is not configured. Missing: ${missingConfig.join(', ')}.` +
+      ` In production, only NEO4J_* variables are used.`
+    );
     console.error(initError.message);
   }
 } catch (error) {
